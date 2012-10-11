@@ -1,0 +1,5 @@
+dosca==1.2.5
+eventlet==0.9.17
+eventlet-log==0.0.1
+greenlet==0.4.0
+pyzmq==2.2.0.1
