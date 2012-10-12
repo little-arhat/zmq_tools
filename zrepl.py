@@ -34,7 +34,7 @@ class ZReplicator(object):
             port = new_port + 1
             pool.spawn_n(self.replicator, publisher, bind_addr,
                          pub_sock, multiply)
-            pool.waitall()
+        pool.waitall()
 
     def replicator(self, listen_to, publish_to, pub_sock, multiply):
         log('Ready to listen {0} and publish to {1} multiplying on {2}'.format(
