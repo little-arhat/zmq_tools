@@ -1,10 +1,4 @@
 
 use device for replicating (do not want copy msg from/to sockets).
 
-allow to replicate message over several publishers:
-
-             _ _ NEW_PUB (MSG * 5)
-           /
-PUB -> SUB _ _ _ NEW_PUB (MSG * 5)
-
 and so on.

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import sys
-from contextlib import closing
+from contextlib import closing, nested
 
 import eventlet
 from eventlet.green import zmq
@@ -26,25 +26,42 @@ class ZReplicator(object):
         multiply = self.config['MULTIPLY']
         bind_host = self.config['BIND_HOST']
         port = self.config['START_PORT']
+        workers = self.config['WORKERS']
 
-        pool = eventlet.greenpool.GreenPool(size=len(publishers))
+        pool = eventlet.greenpool.GreenPool(size=len(publishers) * workers)
+
+
         for publisher in publishers:
-            pub_sock = self.ctx.socket(zmq.PUB)
-            (bind_addr, new_port) = try_bind(pub_sock, bind_host, port)
-            port = new_port + 1
-            pool.spawn_n(self.replicator, publisher, bind_addr,
-                         pub_sock, multiply)
-        pool.waitall()
+            queues = [eventlet.queue.Queue() for _ in xrange(workers)]
+            pool.spawn_n(self.receiver, publisher, queues)
 
-    def replicator(self, listen_to, publish_to, pub_sock, multiply):
-        log('Ready to listen {0} and publish to {1} multiplying on {2}'.format(
-            listen_to, publish_to, multiply))
-        with closing(self.ctx.socket(zmq.SUB)) as sub, closing(pub_sock) as pub:
+            for queue in queues:
+                pub_sock = self.ctx.socket(zmq.PUB)
+                (bind_addr, new_port) = try_bind(pub_sock, bind_host, port)
+                port = new_port + 1
+                pool.spawn_n(self.replicator, queue, bind_addr, pub_sock, multiply)
+
+                pool.waitall()
+
+    def receiver(self, listen_to, queues):
+        log('Ready to listen {0}'.format(listen_to))
+        workers = len(queues)
+        with closing(self.ctx.socket(zmq.SUB)) as sub:
             sub.connect(listen_to)
             sub.setsockopt(zmq.SUBSCRIBE, "")
             while True:
-                msg = sub.recv()
-                log('FROM {0} - TO {1} - {2}'.format(listen_to, publish_to, msg))
+                 msg = sub.recv()
+                 log('RECV MSG FROM {0} - {1}, repl to {2} workers'.format(listen_to, msg, workers))
+                 for queue in queues:
+                     queue.put(msg)
+
+
+    def replicator(self, queue, bind_addr, pub_sock, multiply):
+        log('Ready to replicate on {0}, multiplying {1} times'.format(bind_addr, multiply))
+        with closing(pub_sock) as pub:
+            while True:
+                msg = queue.get()
+                log('GET MSG on {0}, REPL {1} times: {2}'.format(bind_addr, multiply, msg))
                 for _ in xrange(multiply):
                     pub.send(msg)
 
